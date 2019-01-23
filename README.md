@@ -5,7 +5,7 @@
 ## Configuration
 Use config.ini for configuration. Change mail server:
 ```
-mailserver = pop3.vitebsk.energo.net
+mailserver = pop3.example.com
 ```
 To delete messages with files after downloading, change:
 ```
