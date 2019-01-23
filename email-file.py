@@ -9,13 +9,17 @@ import re
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 CFG_FILE = 'config.ini'
 
+# to solve poplib.error_proto: line too long
+poplib._MAXLINE = 20480
+
 # Loads cofiguration from file
 config = configparser.ConfigParser()
 config.read(os.path.join(BASE_DIR, CFG_FILE))
 
 SAVE_FOLDER = config.get('application', 'save_folder')
+USE_SSL = config.get('application', 'use_ssl')
 MAILSERVER = config.get('application', 'mailserver')
-DELETE_PROCEEDED = config.get('application', 'delete_proceeded')
+DELETE_PROCEEDED = True if config.get('application', 'delete_proceeded') == 'True' else False
 LOG_FILENAME = config.get('logging', 'filename')
 LOG_FORMAT = config.get('logging', 'format')
 DATEFMT = config.get('logging', 'DATEFMT')
@@ -32,7 +36,10 @@ def connect_pop3_server(mailserver, user, password):
     """
     try:
         logging.debug(f'Connecting to {mailserver}')
-        pop3_connection = poplib.POP3(mailserver)
+        if USE_SSL:
+            pop3_connection = poplib.POP3_SSL(mailserver, 995)
+        else:
+            pop3_connection = poplib.POP3(mailserver)
         logging.info(f'Server welcome message: {pop3_connection.getwelcome().decode("utf8")}')
         pop3_connection.user(user)
         pop3_connection.pass_(password)
@@ -43,7 +50,6 @@ def connect_pop3_server(mailserver, user, password):
             logging.debug("Unexpected error: value none")
         logging.exception('Got exception while connecting to pop3 server')
         logging.error(e.__doc__)
-        logging.error(e.message)
     
 
 def close_pop3_connection(pop3_connection):
@@ -71,7 +77,7 @@ def process_email(pop3_connection, msg_num, save_folder, messagesCount=0):
                 continue
             if message_part.get('Content-Disposition') is None:
                 continue
-            filenamedecode = email.header.decode_header(message_part.get_filename())
+            filenamedecode = email.header.decode_header(message_part.get_filename() or '')
             code = filenamedecode[0][1]
             if code != None :
                 filename = filenamedecode[0][0].decode(code)
@@ -81,12 +87,13 @@ def process_email(pop3_connection, msg_num, save_folder, messagesCount=0):
             filename = filename.replace('\n','')
             filename = filename.replace('\r','')
             filename = filename.replace('\t','')
-            logging.debug(f'Attachment filename: {filename}')
-            file_data = message_part.get_payload(decode=True)
-            save_attached_file(file_data, filename, save_folder)
-            if DELETE_PROCEEDED:
-                pop3_connection.dele(msg_num)
-                logging.info('Message was deleted from server')
+            if filename != '':
+                logging.debug(f'Attachment filename: {filename}')
+                file_data = message_part.get_payload(decode=True)
+                save_attached_file(file_data, filename, save_folder)
+                if DELETE_PROCEEDED:
+                    pop3_connection.dele(msg_num)
+                    logging.info('Message was deleted from server')
     else:
         logging.error('Error retrieving message')
 
